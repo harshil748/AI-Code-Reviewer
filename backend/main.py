@@ -1,40 +1,38 @@
 # main.py
-# This file sets up the backend server for our AI Code Reviewer application.
-# We use FastAPI, a modern, fast web framework for building APIs with Python.
+# This is the updated backend server with database integration.
 
 # --- Imports ---
-# - FastAPI: The main framework for building the API.
-# - BaseModel from Pydantic: For data validation and defining the structure of our request body.
-# - CORSMiddleware: To allow our future frontend application (on a different domain) to communicate with this backend.
-# - aiohttp: An asynchronous HTTP client/server library we'll use to make the API call to Gemini.
-# - os: To access environment variables.
-# - load_dotenv from dotenv: To load environment variables from a .env file for local development.
 import os
 import json
 import aiohttp
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+# Database-related imports
+from sqlalchemy.orm import Session
+
+# Changed from relative to absolute imports to fix the startup error.
+import models
+import database
+
 # --- Load Environment Variables ---
-# This line loads the variables from a .env file into your environment.
-# It's great for keeping sensitive data like API keys out of your code.
 load_dotenv()
 
+# --- Database Initialization ---
+# This creates the database tables based on our models if they don't exist.
+# We will use Alembic for migrations in a real app, but this is good for setup.
+models.Base.metadata.create_all(bind=database.engine)
+
 # --- Application Initialization ---
-# Create an instance of the FastAPI class. This 'app' will be our main point of interaction.
 app = FastAPI(
     title="AI Code Review and Documentation Assistant API",
-    description="An API that uses a Large Language Model to analyze and document code.",
-    version="1.0.0",
+    description="An API that uses a Large Language Model to analyze and document code, with history.",
+    version="2.0.0",
 )
 
-# --- CORS (Cross-Origin Resource Sharing) ---
-# This is a security feature that browsers implement. Since our frontend and backend will run on different
-# origins (e.g., localhost:3000 and localhost:8000), we need to explicitly allow the browser
-# to make requests from the frontend to the backend.
-# We allow all origins ("*"), methods, and headers for simplicity during development.
+# --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,38 +42,44 @@ app.add_middleware(
 )
 
 
-# --- Pydantic Model for Request Body ---
-# This class defines the expected structure and data type of the JSON object
-# that our API endpoint will receive. FastAPI will automatically validate incoming requests against this model.
-# If the request doesn't match, it will return a helpful error message.
+# --- Pydantic Models ---
 class CodeInput(BaseModel):
     code: str
-    language: str  # e.g., "python", "javascript"
+    language: str
 
 
-# --- API Endpoint: /api/analyze ---
-# This is the core endpoint of our application.
-# It's a POST endpoint because the client is sending data (the code to be analyzed) to the server.
-# The 'async' keyword means the function can perform long-running I/O operations (like an API call)
-# without blocking the entire server.
-@app.post("/api/analyze")
-async def analyze_code(payload: CodeInput):
+class AnalysisResult(BaseModel):
+    explanation: str
+    suggestions: list[str]
+    bugs: list[str]
+
+
+# --- Dependency for Database Session ---
+# This function provides a database session to our API endpoints.
+# Using Depends() allows FastAPI to manage the session's lifecycle (opening and closing).
+def get_db():
+    db = database.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# --- API Endpoints ---
+
+
+@app.post("/api/analyze", response_model=AnalysisResult)
+async def analyze_code(payload: CodeInput, db: Session = Depends(get_db)):
     """
-    Receives code from the user, sends it to the Gemini API for analysis,
+    Receives code, sends it to the Gemini API, saves the result to the database,
     and returns the structured response.
     """
-    # 1. Get the API Key from environment variables
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        # If the API key is not found, raise an HTTPException.
-        # This is a secure way to stop the process and inform the developer.
         raise HTTPException(
             status_code=500, detail="GEMINI_API_KEY not found in environment variables."
         )
 
-    # 2. Construct the prompt for the Gemini model.
-    # A detailed prompt is crucial for getting a high-quality, structured response.
-    # We are asking for three specific things: an explanation, improvement suggestions, and potential bugs.
     prompt = f"""
     As an expert code reviewer for {payload.language}, please analyze the following code snippet.
     Provide your analysis in a structured JSON format. Your response must be a single JSON object with three keys: "explanation", "suggestions", and "bugs".
@@ -88,14 +92,8 @@ async def analyze_code(payload: CodeInput):
     {payload.code}
     ```
     """
-
-    # 3. Prepare the request for the Gemini API.
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-
     headers = {"Content-Type": "application/json"}
-
-    # We are asking the model to return a JSON object, so we set the responseMimeType.
-    # We also provide a schema to ensure the output is in the format we expect.
     gemini_payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -111,8 +109,6 @@ async def analyze_code(payload: CodeInput):
         },
     }
 
-    # 4. Make the asynchronous API call using aiohttp.
-    # Using 'async with' ensures the session is properly closed even if errors occur.
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -120,18 +116,32 @@ async def analyze_code(payload: CodeInput):
             ) as response:
                 if response.status == 200:
                     result = await response.json()
-                    # The response text is inside a nested structure. We need to parse it.
                     if (
                         result.get("candidates")
                         and result["candidates"][0].get("content")
                         and result["candidates"][0]["content"].get("parts")
                     ):
-
-                        # The actual JSON response is a string within the 'text' field, so we parse it again.
                         analysis_text = result["candidates"][0]["content"]["parts"][0][
                             "text"
                         ]
                         analysis_json = json.loads(analysis_text)
+
+                        # --- Save to Database ---
+                        db_record = models.AnalysisHistory(
+                            language=payload.language,
+                            code=payload.code,
+                            explanation=analysis_json.get("explanation", ""),
+                            # We store lists as JSON strings in the database
+                            suggestions=json.dumps(
+                                analysis_json.get("suggestions", [])
+                            ),
+                            bugs=json.dumps(analysis_json.get("bugs", [])),
+                        )
+                        db.add(db_record)
+                        db.commit()
+                        db.refresh(db_record)
+                        # --- End Save to Database ---
+
                         return analysis_json
                     else:
                         raise HTTPException(
@@ -142,22 +152,33 @@ async def analyze_code(payload: CodeInput):
                             },
                         )
                 else:
-                    # If the API call fails, return an error message with the status code.
                     error_details = await response.text()
                     raise HTTPException(
                         status_code=response.status,
                         detail={
-                            "error": f"Gemini API request failed",
+                            "error": "Gemini API request failed",
                             "details": error_details,
                         },
                     )
     except Exception as e:
-        # Catch any other exceptions during the process.
         raise HTTPException(
             status_code=500,
             detail={"error": "An unexpected error occurred.", "details": str(e)},
         )
 
 
-
-# 10. Run the server: uvicorn main:app --reload
+@app.get("/api/history")
+def get_analysis_history(db: Session = Depends(get_db)):
+    """
+    Retrieves all analysis records from the database, ordered by the most recent first.
+    """
+    history = (
+        db.query(models.AnalysisHistory)
+        .order_by(models.AnalysisHistory.created_at.desc())
+        .all()
+    )
+    # We need to parse the JSON strings back into lists for the frontend
+    for record in history:
+        record.suggestions = json.loads(record.suggestions)
+        record.bugs = json.loads(record.bugs)
+    return history
