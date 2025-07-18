@@ -42,7 +42,7 @@ Make sure you have the following installed:
 
 ### 1. Clone the Repository
 
- ```bash
+```bash
 git clone [https://github.com/your-github-username/ai-code-reviewer.git](https://www.google.com/search?q=https://github.com/your-github-username/ai-code-reviewer.git)
 cd ai-code-reviewer
 ```
@@ -56,10 +56,8 @@ The PostgreSQL database runs in a Docker container.
 
 * In the root directory of the project, run the following command to start the database in the background:
 
-```
-
+```bash
 docker-compose up -d
-
 ```
 
 This will start a PostgreSQL server on `localhost:5432`.
@@ -68,42 +66,35 @@ This will start a PostgreSQL server on `localhost:5432`.
 
 * Navigate to the `backend` directory:
 
-```
-
+```bash
 cd backend
-
 ```
 
 * Create and activate a Python virtual environment:
 
-```
 
 # For macOS/Linux
-
+```bash
 python3 -m venv venv
 source venv/bin/activate
+```
 
 # For Windows
-
+```bash
 python -m venv venv
 .\\venv\\Scripts\\activate
-
 ```
 
 * Install the required Python libraries:
 
-```
-
+```bash
 pip install -r requirements.txt
-
 ```
 
 * Create a `.env` file for your environment variables by copying the example file:
 
-```
-
+```bash
 cp .env.example .env
-
 ````
 
 * **Edit the `.env` file:**
@@ -112,30 +103,23 @@ cp .env.example .env
 
 * Open the `.env` file and add your key. It should look like this:
 
-  ```
+  ```bash
   # .env
   GEMINI_API_KEY=YOUR_API_KEY_HERE
   DATABASE_URL="postgresql://myuser:mypassword@localhost/ai_reviewer"
-  
   ```
 
 ### 4. Configure the Frontend
 
 * In a **new terminal window**, navigate to the `frontend` directory:
 
-````
-
+```bash
 cd frontend
-
 ```
-
 * Install the required Node.js packages:
-
 ```
-
 npm install
-
-````
+```
 
 ### 5. Run the Application
 
@@ -147,9 +131,8 @@ You need to have **two terminals** running simultaneously: one for the backend a
 
 * Run the FastAPI server:
 
-  ```
+  ```bash
   uvicorn main:app --reload
-  
   ```
 
 * The backend will be running at `http://127.0.0.1:8000`.
@@ -160,9 +143,8 @@ You need to have **two terminals** running simultaneously: one for the backend a
 
 * Run the Next.js development server:
 
-  ```
+  ```bash
   npm run dev
-  
   ```
 
 * The frontend will be running at `http://localhost:3000`.
@@ -171,7 +153,7 @@ You can now open your browser and navigate to `http://localhost:3000` to use the
 
 ## 📂 Project Structure
 
-````
+```
 
 ai-code-reviewer/
 ├── backend/
