@@ -81,17 +81,18 @@ async def analyze_code(payload: CodeInput, db: Session = Depends(get_db)):
         )
 
     prompt = f"""
-    As an expert code reviewer for {payload.language}, please analyze the following code snippet.
-    Provide your analysis in a structured JSON format. Your response must be a single JSON object with three keys: "explanation", "suggestions", and "bugs".
-    - "explanation": A clear, concise explanation of what the code does.
-    - "suggestions": A list of actionable suggestions to improve the code's quality, performance, or readability. If no suggestions, provide an empty list.
-    - "bugs": A list of potential bugs or logical errors. If no bugs are found, provide an empty list.
+You are an expert code reviewer for {payload.language}. Carefully analyze the code snippet below.
 
-    Code to analyze:
-    ```{payload.language}
-    {payload.code}
-    ```
-    """
+Your response **must only be a valid JSON object** with the following keys:
+- "explanation": string — a concise explanation of what the code does.
+- "suggestions": array of strings — suggestions to improve quality/performance/readability (or an empty list).
+- "bugs": array of strings — potential bugs or logical issues (or an empty list).
+
+Strictly return only the JSON — no extra text, no comments, no code block formatting.
+
+Here is the code:
+{payload.code}
+"""
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     gemini_payload = {
