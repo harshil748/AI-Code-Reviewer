@@ -159,18 +159,5 @@ async def analyze_code(payload: CodeInput):
         )
 
 
-# --- How to Run This Server ---
-# 1. Make sure you have Python installed.
-# 2. Open your terminal and navigate to the `backend` folder.
-# 3. Create a virtual environment: python3 -m venv venv
-# 4. Activate it: source venv/bin/activate
-# 5. Install the required libraries: pip install fastapi "uvicorn[standard]" aiohttp python-dotenv
-# 6. Get your API key from Google AI Studio.
-# 7. Create a file named .env in the `backend` folder.
-# 8. In the .env file, add your API key like this (replace YOUR_API_KEY_HERE with your actual key):
-#    GEMINI_API_KEY=YOUR_API_KEY_HERE
-# 9. Save the .env file.
+
 # 10. Run the server: uvicorn main:app --reload
-#
-# Your API will be running at http://127.0.0.1:8000
-# You can access the interactive API documentation at http://127.0.0.1:8000/docs
