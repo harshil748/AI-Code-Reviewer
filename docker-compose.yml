@@ -1,0 +1,28 @@
+# docker-compose.yml
+# This file defines the services for our application's infrastructure.
+# For now, it only contains our PostgreSQL database.
+
+version: '3.8' # Specifies the version of the Docker Compose file format
+
+services:
+  db:
+    image: postgres:15-alpine # Use the official PostgreSQL version 15 image. 'alpine' is a lightweight version.
+    container_name: ai_reviewer_db
+    restart: always # Always restart the container if it stops
+    environment:
+      # These are the credentials for your database.
+      # The backend will use these to connect.
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+      - POSTGRES_DB=ai_reviewer
+    ports:
+      # Maps port 5432 inside the container to port 5432 on your Mac.
+      # This allows our backend to connect to 'localhost:5432'.
+      - "5432:5432"
+    volumes:
+      # This creates a 'named volume' called 'postgres_data'.
+      # It ensures that your database data is saved even if you remove and recreate the container.
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data: # Defines the named volume used above.
