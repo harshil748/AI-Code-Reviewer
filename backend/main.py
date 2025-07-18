@@ -10,10 +10,11 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+# Import Optional from typing to make model fields optional
+from typing import Optional, List
+
 # Database-related imports
 from sqlalchemy.orm import Session
-
-# Changed from relative to absolute imports to fix the startup error.
 import models
 import database
 
@@ -21,8 +22,6 @@ import database
 load_dotenv()
 
 # --- Database Initialization ---
-# This creates the database tables based on our models if they don't exist.
-# We will use Alembic for migrations in a real app, but this is good for setup.
 models.Base.metadata.create_all(bind=database.engine)
 
 # --- Application Initialization ---
@@ -48,15 +47,15 @@ class CodeInput(BaseModel):
     language: str
 
 
+# FIX: Made 'suggestions' and 'bugs' optional in the response model.
+# If the AI doesn't return these keys, they will default to an empty list.
 class AnalysisResult(BaseModel):
     explanation: str
-    suggestions: list[str]
-    bugs: list[str]
+    suggestions: Optional[List[str]] = []
+    bugs: Optional[List[str]] = []
 
 
 # --- Dependency for Database Session ---
-# This function provides a database session to our API endpoints.
-# Using Depends() allows FastAPI to manage the session's lifecycle (opening and closing).
 def get_db():
     db = database.SessionLocal()
     try:
@@ -81,18 +80,17 @@ async def analyze_code(payload: CodeInput, db: Session = Depends(get_db)):
         )
 
     prompt = f"""
-You are an expert code reviewer for {payload.language}. Carefully analyze the code snippet below.
+    As an expert code reviewer for {payload.language}, please analyze the following code snippet.
+    Provide your analysis in a structured JSON format. Your response must be a single JSON object with three keys: "explanation", "suggestions", and "bugs".
+    - "explanation": A clear, concise explanation of what the code does.
+    - "suggestions": A list of actionable suggestions to improve the code's quality, performance, or readability. If no suggestions, provide an empty list.
+    - "bugs": A list of potential bugs or logical errors. If no bugs are found, provide an empty list.
 
-Your response **must only be a valid JSON object** with the following keys:
-- "explanation": string — a concise explanation of what the code does.
-- "suggestions": array of strings — suggestions to improve quality/performance/readability (or an empty list).
-- "bugs": array of strings — potential bugs or logical issues (or an empty list).
-
-Strictly return only the JSON — no extra text, no comments, no code block formatting.
-
-Here is the code:
-{payload.code}
-"""
+    Code to analyze:
+    ```{payload.language}
+    {payload.code}
+    ```
+    """
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     gemini_payload = {
@@ -132,7 +130,6 @@ Here is the code:
                             language=payload.language,
                             code=payload.code,
                             explanation=analysis_json.get("explanation", ""),
-                            # We store lists as JSON strings in the database
                             suggestions=json.dumps(
                                 analysis_json.get("suggestions", [])
                             ),
@@ -178,7 +175,6 @@ def get_analysis_history(db: Session = Depends(get_db)):
         .order_by(models.AnalysisHistory.created_at.desc())
         .all()
     )
-    # We need to parse the JSON strings back into lists for the frontend
     for record in history:
         record.suggestions = json.loads(record.suggestions)
         record.bugs = json.loads(record.bugs)

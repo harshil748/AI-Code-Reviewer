@@ -3,64 +3,99 @@
 "use client"; // This directive is necessary in Next.js 13+ to mark this as a client-side component, allowing us to use state and effects.
 
 // --- Imports ---
-// We import 'useState' from React to manage the state of our component,
-// such as the input code, the selected language, the analysis result, and loading status.
-import { useState } from "react";
+// We import 'useState' and 'useEffect' from React.
+// useEffect allows us to perform side effects, like fetching data, when the component loads.
+import { useState, useEffect } from "react";
+
+// --- Type Definition for History ---
+// Defining a type for our history objects makes the code safer and easier to understand.
+interface HistoryItem {
+	id: number;
+	code: string;
+	language: string;
+	explanation: string;
+	suggestions: string[];
+	bugs: string[];
+	created_at: string;
+}
 
 // --- Main Component ---
 export default function HomePage() {
 	// --- State Management ---
-	// 'code' stores the text from the textarea.
 	const [code, setCode] = useState<string>(
 		'function greet(name) {\n  return "Hello, " + name;\n}'
 	);
-	// 'language' stores the value from the dropdown.
 	const [language, setLanguage] = useState<string>("javascript");
-	// 'result' will store the JSON object we get back from our backend API.
 	const [result, setResult] = useState<any>(null);
-	// 'isLoading' will be true while we are waiting for the API response.
 	const [isLoading, setIsLoading] = useState<boolean>(false);
-	// 'error' will store any error messages.
 	const [error, setError] = useState<string | null>(null);
+	// New state to store the list of past analyses.
+	const [history, setHistory] = useState<HistoryItem[]>([]);
+
+	// --- Data Fetching Function ---
+	// We've created a dedicated function to fetch history to avoid repeating code.
+	const fetchHistory = async () => {
+		try {
+			const response = await fetch("http://127.0.0.1:8000/api/history");
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => null); // Gracefully handle non-JSON responses
+				throw new Error(
+					errorData?.detail ||
+						`Failed to fetch history. Server responded with status: ${response.status}`
+				);
+			}
+			const data = await response.json();
+			setHistory(data);
+		} catch (err: any) {
+			// This catch block is hit for network errors (e.g., server is down)
+			console.error("Error fetching history:", err.message);
+			// Set a user-friendly error message to guide the user.
+			setError(
+				"Could not connect to the server to fetch history. Please ensure the backend server is running and try refreshing the page."
+			);
+		}
+	};
+
+	// --- useEffect Hook ---
+	// This hook runs once when the component first loads, thanks to the empty dependency array [].
+	// It's the perfect place to fetch the initial data.
+	useEffect(() => {
+		fetchHistory();
+	}, []);
 
 	// --- Event Handler ---
-	// This function is called when the "Analyze Code" button is clicked.
 	const handleAnalyze = async () => {
-		// Reset previous results and errors, and set loading to true.
 		setResult(null);
 		setError(null);
 		setIsLoading(true);
 
 		try {
-			// Make a POST request to our backend API endpoint.
 			const response = await fetch("http://127.0.0.1:8000/api/analyze", {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				// The body of the request is a JSON string containing the code and language.
+				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ code, language }),
 			});
 
-			// If the response from the server is not 'OK' (e.g., a 4xx or 5xx error),
-			// we process it as an error.
 			if (!response.ok) {
-				const errorData = await response.json();
-				// We construct a helpful error message from the server's response.
+				const errorData = await response.json().catch(() => null);
 				throw new Error(
-					errorData.detail || "An error occurred while analyzing the code."
+					errorData?.detail?.error ||
+						`An error occurred. Server responded with status: ${response.status}`
 				);
 			}
 
-			// If the response is successful, we parse the JSON body and store it in our state.
 			const data = await response.json();
 			setResult(data);
+			// After a successful analysis, we re-fetch the history to update the list.
+			fetchHistory();
 		} catch (err: any) {
 			// If any error occurs during the fetch process, we catch it here.
-			setError(err.message);
+			// We check for the generic "Failed to fetch" to provide a more helpful message.
+			const userFriendlyError = err.message.includes("Failed to fetch")
+				? "Could not connect to the server. Please ensure the backend server is running on http://127.0.0.1:8000."
+				: err.message;
+			setError(userFriendlyError);
 		} finally {
-			// This block always runs, regardless of success or failure.
-			// We set loading back to false.
 			setIsLoading(false);
 		}
 	};
@@ -69,7 +104,6 @@ export default function HomePage() {
 	return (
 		<main className="flex min-h-screen flex-col items-center bg-gray-50 p-4 sm:p-12">
 			<div className="w-full max-w-4xl">
-				{/* Header */}
 				<header className="text-center mb-10">
 					<h1 className="text-4xl sm:text-5xl font-bold text-gray-800">
 						AI Code Reviewer
@@ -79,8 +113,8 @@ export default function HomePage() {
 					</p>
 				</header>
 
-				{/* Input Section */}
 				<div className="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+					{/* Input form remains the same */}
 					<div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
 						<div className="sm:col-span-3">
 							<label
@@ -129,7 +163,6 @@ export default function HomePage() {
 					</div>
 				</div>
 
-				{/* Results Section */}
 				{error && (
 					<div className="mt-8 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
 						<p className="font-bold">Error:</p>
@@ -139,11 +172,10 @@ export default function HomePage() {
 
 				{result && (
 					<div className="mt-8 bg-white p-6 rounded-xl shadow-md border border-gray-200 animate-fade-in">
+						{/* Results section remains the same */}
 						<h2 className="text-2xl font-bold text-gray-800 mb-4">
 							Analysis Results
 						</h2>
-
-						{/* Explanation */}
 						<div className="mb-6">
 							<h3 className="text-xl font-semibold text-gray-700 border-b pb-2 mb-3">
 								Explanation
@@ -152,8 +184,6 @@ export default function HomePage() {
 								{result.explanation}
 							</p>
 						</div>
-
-						{/* Suggestions */}
 						<div className="mb-6">
 							<h3 className="text-xl font-semibold text-gray-700 border-b pb-2 mb-3">
 								Suggestions
@@ -172,8 +202,6 @@ export default function HomePage() {
 								</p>
 							)}
 						</div>
-
-						{/* Bugs */}
 						<div>
 							<h3 className="text-xl font-semibold text-gray-700 border-b pb-2 mb-3">
 								Potential Bugs
@@ -192,6 +220,42 @@ export default function HomePage() {
 						</div>
 					</div>
 				)}
+
+				{/* NEW: History Section */}
+				<div className="mt-12">
+					<h2 className="text-2xl font-bold text-gray-800 mb-4">
+						Analysis History
+					</h2>
+					<div className="space-y-4">
+						{history.length > 0
+							? history.map((item) => (
+									<div
+										key={item.id}
+										className="bg-white p-4 rounded-lg shadow-sm border border-gray-200"
+									>
+										<div className="flex justify-between items-center">
+											<span className="font-mono text-sm text-blue-700 bg-blue-100 px-2 py-1 rounded">
+												{item.language}
+											</span>
+											<span className="text-xs text-gray-500">
+												{new Date(item.created_at).toLocaleString()}
+											</span>
+										</div>
+										<pre className="mt-3 bg-gray-100 p-3 rounded text-sm text-gray-800 overflow-x-auto">
+											<code>{item.code}</code>
+										</pre>
+									</div>
+							  ))
+							: // Hide the "No history yet" message if there was an error fetching it.
+							  !error && (
+									<div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+										<p className="text-gray-500">
+											No history yet. Run an analysis to get started!
+										</p>
+									</div>
+							  )}
+					</div>
+				</div>
 			</div>
 		</main>
 	);
